@@ -19,53 +19,6 @@ try:
 except ImportError:
     print("python-dotenv not installed, using system environment variables")
 
-<<<<<<< HEAD
-=======
-# Set Italian timezone
-italy_tz = pytz.timezone('Europe/Rome')
-
-# Debug logging for environment variables
-print("\n=== Environment Variables Debug ===")
-print(f"WA_TOKEN exists: {'Yes' if os.environ.get('WA_TOKEN') else 'No'}")
-print(f"PHONE_ID exists: {'Yes' if os.environ.get('PHONE_ID') else 'No'}")
-print(f"PHONE_NUMBER exists: {'Yes' if os.environ.get('PHONE_NUMBER') else 'No'}")
-print(f"GEN_API exists: {'Yes' if os.environ.get('GEN_API') else 'No'}")
-print(f"GOOGLE_CALENDAR_ID exists: {'Yes' if os.environ.get('GOOGLE_CALENDAR_ID') else 'No'}")
-print(f"GOOGLE_CREDENTIALS exists: {'Yes' if os.environ.get('GOOGLE_CREDENTIALS') else 'No'}")
-
-# Function to safely parse JSON credentials
-def parse_google_credentials():
-    try:
-        creds_str = os.environ.get('GOOGLE_CREDENTIALS')
-        if not creds_str:
-            return None, "No credentials found in environment"
-        
-        # Try to parse the credentials
-        creds_data = json.loads(creds_str)
-        
-        # Validate required fields
-        required_fields = ['type', 'project_id', 'private_key_id', 'private_key', 'client_email']
-        missing_fields = [field for field in required_fields if field not in creds_data]
-        
-        if missing_fields:
-            return None, f"Missing required fields: {', '.join(missing_fields)}"
-            
-        return creds_data, None
-    except json.JSONDecodeError as e:
-        return None, f"Invalid JSON format: {str(e)}"
-    except Exception as e:
-        return None, f"Error parsing credentials: {str(e)}"
-
-# Parse and validate credentials
-creds_data, creds_error = parse_google_credentials()
-if creds_data:
-    print("GOOGLE_CREDENTIALS is valid JSON")
-    print(f"Service account email: {creds_data.get('client_email', 'Not found')}")
-else:
-    print(f"GOOGLE_CREDENTIALS error: {creds_error}")
-print("================================\n")
-
->>>>>>> 618834d909e4b35d55be6ec69a730ffc744207f2
 wa_token=os.environ.get("WA_TOKEN")
 genai.configure(api_key=os.environ.get("GEN_API"))
 phone_id=os.environ.get("PHONE_ID")
@@ -75,30 +28,11 @@ bot_name="Dai"
 model_name="gemini-1.5-flash-latest" 
 
 # Check if required environment variables for calendar functionality are available
-has_calendar_creds = creds_data is not None
-calendar_id = os.environ.get("GOOGLE_CALENDAR_ID", "primary")  # Use 'primary' as default if not specified
-
+has_calendar_creds = os.environ.get("GOOGLE_CREDENTIALS") is not None and os.environ.get("GOOGLE_CALENDAR_ID") is not None
 if has_calendar_creds:
-    print("Google Calendar credentials found in environment variables")
-    print(f"Using calendar ID: {calendar_id}")
-    
-    try:
-        # Create a temporary creds.json file from environment variable
-        with open('creds.json', 'w') as f:
-            json.dump(creds_data, f)
-        print("Successfully created creds.json from environment variable")
-    except Exception as e:
-        print(f"Error creating creds.json: {str(e)}")
-        has_calendar_creds = False
+    print("Google Calendar credentials found")
 else:
-    print("WARNING: Google Calendar credentials not found in environment variables")
-    # Check if creds.json exists locally
-    has_calendar_creds = os.path.exists('creds.json')
-    if has_calendar_creds:
-        print("Found local creds.json file")
-        print(f"Using calendar ID: {calendar_id}")
-    else:
-        print("No local creds.json file found")
+    print("WARNING: Google Calendar credentials not found. Calendar functionality will be limited.")
 
 app=Flask(__name__)
 
@@ -176,9 +110,11 @@ def get_calendar_events(days=7, time_description="upcoming", strict_time_filter=
         if not has_calendar_creds:
             return "⚠️ Cannot fetch calendar events: Google Calendar credentials not configured"
         
-        # Load credentials from creds.json file
-        creds = service_account.Credentials.from_service_account_file(
-            'creds.json',
+        # Load credentials from environment variable
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+        creds_dict = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
             scopes=['https://www.googleapis.com/auth/calendar.readonly']
         )
         
@@ -221,7 +157,8 @@ def get_calendar_events(days=7, time_description="upcoming", strict_time_filter=
         time_min = start_date.isoformat() + 'Z'
         time_max = end_date.isoformat() + 'Z'
         
-        # Use the global calendar_id variable
+        calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
+  
         events_result = service.events().list(
             calendarId=calendar_id,
             timeMin=time_min,
@@ -345,16 +282,19 @@ def upcoming_event_reminder():
             
             print(f"Checking for all of today's events from {today_start} to {today_end}")
             
-            # Load credentials from creds.json file
-            creds = service_account.Credentials.from_service_account_file(
-                'creds.json',
+            # Load credentials from environment variable
+            creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+            creds_dict = json.loads(creds_json)
+            creds = service_account.Credentials.from_service_account_info(
+                creds_dict,
                 scopes=['https://www.googleapis.com/auth/calendar.readonly']
             )
             
             # Build the service
             service = build('calendar', 'v3', credentials=creds)
+            calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
             
-            # Use the global calendar_id variable
+            # Query for all of today's events
             events_result = service.events().list(
                 calendarId=calendar_id,
                 timeMin=time_min,
@@ -452,13 +392,11 @@ def create_calendar_event(summary, start_time=None, end_time=None, description="
         if not has_calendar_creds:
             return "⚠️ Cannot create calendar event: Google Calendar credentials not configured"
         
-        print(f"Attempting to create event: {summary}")
-        print(f"Start time: {start_time}")
-        print(f"End time: {end_time}")
-        
-        # Load credentials from creds.json file
-        creds = service_account.Credentials.from_service_account_file(
-            'creds.json',
+        # Load credentials from environment variable
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+        creds_dict = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
             scopes=['https://www.googleapis.com/auth/calendar']
         )
         
@@ -478,8 +416,6 @@ def create_calendar_event(summary, start_time=None, end_time=None, description="
         start_time_str = start_time.isoformat()
         end_time_str = end_time.isoformat()
         
-        print(f"Using calendar ID: {calendar_id}")
-        
         # Create event
         event = {
             'summary': summary,
@@ -494,35 +430,12 @@ def create_calendar_event(summary, start_time=None, end_time=None, description="
             },
         }
         
-<<<<<<< HEAD
         calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
         event = service.events().insert(calendarId=calendar_id, body=event).execute()
         
         return f"✅ Event created: {summary} on {start_time.strftime('%a, %b %d at %I:%M %p')}"
-=======
-        try:
-            # Use the global calendar_id variable
-            event = service.events().insert(calendarId=calendar_id, body=event).execute()
-            print(f"Event created successfully with ID: {event.get('id')}")
-            
-            # Format the time for display in Italian timezone
-            local_start = start_time.strftime('%a, %b %d at %I:%M %p')
-            local_end = end_time.strftime('%I:%M %p')
-            return f"✅ Event created successfully!\n\n📅 *{summary}*\n⏰ {local_start} - {local_end}"
-        except Exception as e:
-            error_msg = str(e)
-            print(f"Error creating event: {error_msg}")
-            if "Not Found" in error_msg:
-                return "⚠️ Error: Calendar not found. Please make sure the service account has access to your calendar."
-            elif "Forbidden" in error_msg:
-                return "⚠️ Error: Permission denied. Please make sure the service account has write access to your calendar."
-            else:
-                return f"⚠️ Error creating calendar event: {error_msg}"
->>>>>>> 618834d909e4b35d55be6ec69a730ffc744207f2
     except Exception as e:
-        error_msg = str(e)
-        print(f"Error in create_calendar_event: {error_msg}")
-        return f"⚠️ Error creating calendar event: {error_msg}"
+        return f"Error creating calendar event: {str(e)}"
 
 def parse_event_time(text):
     """Extract date and time information from text"""
@@ -551,31 +464,17 @@ def parse_event_time(text):
         # Default to today
         start_date = today
     
-    # Try to extract time using various patterns
-    time_patterns = [
-        r'(\d{1,2})\.(\d{2})',  # 8.30 format
-        r'(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)',  # 2pm, 2:30pm
-        r'(\d{1,2})(?::(\d{2}))?',  # 14:30, 14
-        r'at (\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?',  # at 2pm, at 14:30
-        r'from (\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?',  # from 2pm
-        r'to (\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?'  # to 4pm
-    ]
+    # Try to extract time using regex
+    time_pattern = r'(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)'
+    time_matches = re.findall(time_pattern, text)
     
-    times_found = []
-    for pattern in time_patterns:
-        matches = re.findall(pattern, text)
-        if matches:
-            times_found.extend(matches)
-            break  # Stop after finding the first matching pattern
-    
-    if times_found:
-        # Process the first time as start time
-        hour = int(times_found[0][0])
-        minute = int(times_found[0][1]) if times_found[0][1] else 0
-        am_pm = times_found[0][2].lower() if len(times_found[0]) > 2 and times_found[0][2] else None
+    if time_matches:
+        # Use the first time as start time
+        hour = int(time_matches[0][0])
+        minute = int(time_matches[0][1]) if time_matches[0][1] else 0
+        am_pm = time_matches[0][2].lower()
         
         # Convert to 24-hour format
-<<<<<<< HEAD
         if am_pm in ['pm', 'p.m.'] and hour < 12:
             hour += 12
         elif am_pm in ['am', 'a.m.'] and hour == 12:
@@ -589,37 +488,12 @@ def parse_event_time(text):
             minute = int(time_matches[1][1]) if time_matches[1][1] else 0
             am_pm = time_matches[1][2].lower()
             
-=======
-        if am_pm:
->>>>>>> 618834d909e4b35d55be6ec69a730ffc744207f2
             if am_pm in ['pm', 'p.m.'] and hour < 12:
                 hour += 12
             elif am_pm in ['am', 'a.m.'] and hour == 12:
                 hour = 0
-<<<<<<< HEAD
                 
             end_time = start_date.replace(hour=hour, minute=minute)
-=======
-        
-        # Create datetime with Italian timezone
-        start_time = start_date.replace(hour=hour, minute=minute)
-        start_time = italy_tz.localize(start_time)
-        
-        # If there's a second time, use it as end time
-        if len(times_found) > 1:
-            hour = int(times_found[1][0])
-            minute = int(times_found[1][1]) if times_found[1][1] else 0
-            am_pm = times_found[1][2].lower() if len(times_found[1]) > 2 and times_found[1][2] else None
-            
-            if am_pm:
-                if am_pm in ['pm', 'p.m.'] and hour < 12:
-                    hour += 12
-                elif am_pm in ['am', 'a.m.'] and hour == 12:
-                    hour = 0
-            
-            end_time = start_date.replace(hour=hour, minute=minute)
-            end_time = italy_tz.localize(end_time)
->>>>>>> 618834d909e4b35d55be6ec69a730ffc744207f2
         else:
             # Default end time is start time + 1 hour
             end_time = start_time + duration
@@ -627,7 +501,7 @@ def parse_event_time(text):
         # Default to current time + 1 hour if no time specified
         start_time = now + timedelta(hours=1)
         end_time = start_time + duration
-    
+        
     return start_time, end_time
 
 # Start the reminder threads
