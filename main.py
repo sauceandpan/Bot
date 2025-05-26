@@ -295,8 +295,9 @@ def upcoming_event_reminder():
             time.sleep(120)
 
 def parse_event_time(text):
-    # Build a naive datetime (no tzinfo)
-    now = datetime.now()  # Use naive datetime
+    # Use timezone-aware datetime
+    tz = pytz_timezone("Europe/Rome")
+    now = datetime.now(tz)
     duration = timedelta(hours=1)
     text = text.lower()
 
@@ -321,11 +322,11 @@ def parse_event_time(text):
     else:
         # Default: one hour from now
         start_time = now + timedelta(hours=1)
-        start_time = datetime(start_time.year, start_time.month, start_time.day, start_time.hour, start_time.minute)
         end_time = start_time + duration
         return start_time, end_time
 
-    start_time = datetime(
+    # Create timezone-aware datetime
+    start_time = tz.localize(datetime(
         base_date.year,
         base_date.month,
         base_date.day,
@@ -333,7 +334,7 @@ def parse_event_time(text):
         minute,
         0,
         0
-    )
+    ))
     end_time = start_time + duration
     return start_time, end_time
 
@@ -348,24 +349,26 @@ def create_calendar_event(summary, start_time=None, end_time=None, description="
             scopes=['https://www.googleapis.com/auth/calendar']
         )
         service = build('calendar', 'v3', credentials=creds)
+        tz = pytz_timezone("Europe/Rome")
+        
         if not start_time:
-            now = datetime.now()  # Use naive datetime
+            now = datetime.now(tz)
             start_time = now + timedelta(hours=1)
             end_time = start_time + timedelta(hours=1)
         if start_time and not end_time:
             end_time = start_time + timedelta(hours=1)
 
-        # Create event with naive datetime and let Google handle timezone
+        # Create event with timezone-aware datetime
         event = {
             'summary': summary,
             'description': description,
             'start': {
                 'dateTime': start_time.isoformat(),
-                'timeZone': 'Europe/Rome',  # Let Google Calendar handle the conversion
+                'timeZone': 'Europe/Rome',
             },
             'end': {
                 'dateTime': end_time.isoformat(),
-                'timeZone': 'Europe/Rome',  # Let Google Calendar handle the conversion
+                'timeZone': 'Europe/Rome',
             },
         }
         calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
