@@ -112,7 +112,7 @@ def get_calendar_events(days=7, time_description="upcoming", strict_time_filter=
         )
 
         service = build('calendar', 'v3', credentials=creds)
-        tz = pytz_timezone("Europe/Rome")
+        tz = pytz_timezone("Europe/Rome")  # Using Rome timezone (GMT+2)
         now = datetime.now(tz)
         if time_description == "today":
             start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -169,7 +169,7 @@ def daily_calendar_reminder():
     time.sleep(5)
     print("Starting automated calendar reminder service...")
     last_sent_hour = -1
-    tz = pytz_timezone("Europe/Rome")
+    tz = pytz_timezone("Europe/Rome")  # Using Rome timezone (GMT+2)
     while True:
         try:
             current_hour = datetime.now(tz).hour
@@ -197,7 +197,7 @@ def upcoming_event_reminder():
     time.sleep(10)
     print("Starting upcoming event reminder service...")
     reminded_events = set()
-    tz = pytz_timezone("Europe/Rome")
+    tz = pytz_timezone("Europe/Rome")  # Using Rome timezone (GMT+2)
     try:
         if has_calendar_creds:
             print("\n--- Today's Events ---")
@@ -295,7 +295,7 @@ def upcoming_event_reminder():
             time.sleep(120)
 
 def parse_event_time(text):
-    # Use timezone-aware datetime
+    # Use timezone-aware datetime with Rome timezone (GMT+2)
     tz = pytz_timezone("Europe/Rome")
     now = datetime.now(tz)
     duration = timedelta(hours=1)
@@ -349,7 +349,7 @@ def create_calendar_event(summary, start_time=None, end_time=None, description="
             scopes=['https://www.googleapis.com/auth/calendar']
         )
         service = build('calendar', 'v3', credentials=creds)
-        tz = pytz_timezone("Europe/Rome")
+        tz = pytz_timezone("Europe/Rome")  # Using Rome timezone (GMT+2)
         
         if not start_time:
             now = datetime.now(tz)
@@ -364,11 +364,11 @@ def create_calendar_event(summary, start_time=None, end_time=None, description="
             'description': description,
             'start': {
                 'dateTime': start_time.isoformat(),
-                'timeZone': 'Europe/Rome',
+                'timeZone': 'Europe/Rome',  # Using Rome timezone (GMT+2)
             },
             'end': {
                 'dateTime': end_time.isoformat(),
-                'timeZone': 'Europe/Rome',
+                'timeZone': 'Europe/Rome',  # Using Rome timezone (GMT+2)
             },
         }
         calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
@@ -384,7 +384,7 @@ upcoming_reminder_thread.start()
 
 @app.route("/test-time", methods=["GET"])
 def test_time():
-    tz = pytz_timezone("Europe/Rome")
+    tz = pytz_timezone("Europe/Rome")  # Using Rome timezone (GMT+2)
     now = datetime.now(tz)
     return jsonify({
         "current_time": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
