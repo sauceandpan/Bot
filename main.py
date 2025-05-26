@@ -337,9 +337,9 @@ def upcoming_event_reminder():
                         event_start_time = event_start_time.astimezone(ROME_TZ)
                         start_str = event_start_time.strftime("%I:%M %p")
                         
-                        # Calculate time until event
-                        time_until = event_start_time - now
-                        minutes_until = int(time_until.total_seconds() / 60)
+                        # Calculate time until event (both times are now timezone-aware)
+                        time_until = (event_start_time - now).total_seconds() / 60
+                        minutes_until = int(time_until)
                         
                         print(f"Event starts in {minutes_until} minutes")
                         
