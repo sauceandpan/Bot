@@ -19,5 +19,15 @@
     ],
     "env": {
         "PYTHONUNBUFFERED": "1"
-    }
+    },
+    "crons": [
+        {
+            "path": "/cron/daily-reminder",
+            "schedule": "0 7 * * *"
+        },
+        {
+            "path": "/cron/upcoming-reminder",
+            "schedule": "* * * * *"
+        }
+    ]
 }
