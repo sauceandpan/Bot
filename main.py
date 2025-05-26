@@ -112,9 +112,8 @@ def get_calendar_events(days=7, time_description="upcoming", strict_time_filter=
         )
 
         service = build('calendar', 'v3', credentials=creds)
-        tz = pytz_timezone("UTC")
+        tz = pytz_timezone("Europe/Rome")
         now = datetime.now(tz)
-        now = now - timedelta(hours=2)
         if time_description == "today":
             start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
             end_date = start_date + timedelta(days=1)
@@ -170,7 +169,7 @@ def daily_calendar_reminder():
     time.sleep(5)
     print("Starting automated calendar reminder service...")
     last_sent_hour = -1
-    tz = pytz_timezone("UTC")
+    tz = pytz_timezone("Europe/Rome")
     while True:
         try:
             current_hour = datetime.now(tz).hour
@@ -198,7 +197,7 @@ def upcoming_event_reminder():
     time.sleep(10)
     print("Starting upcoming event reminder service...")
     reminded_events = set()
-    tz = pytz_timezone("UTC")
+    tz = pytz_timezone("Europe/Rome")
     try:
         if has_calendar_creds:
             print("\n--- Today's Events ---")
@@ -216,7 +215,6 @@ def upcoming_event_reminder():
                 continue
             print("Checking for upcoming events...")
             now = datetime.now(tz)
-            now = now - timedelta(hours=2)
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             today_end = today_start + timedelta(days=1)
             time_min = today_start.isoformat()
@@ -267,7 +265,6 @@ def upcoming_event_reminder():
                         event_start_time = datetime.fromisoformat(start.replace('Z', '+00:00')) \
                             if 'Z' in start else datetime.fromisoformat(start)
                         now_now = datetime.now(tz)
-                        now_now = now_now - timedelta(hours=2)
                         start_str = event_start_time.strftime("%I:%M %p")
                         time_until = (event_start_time - now_now)
                         minutes_until = int(time_until.total_seconds() / 60)
@@ -299,9 +296,7 @@ def upcoming_event_reminder():
 
 def parse_event_time(text):
     # Build a naive datetime (no tzinfo)
-    tz = pytz_timezone("UTC")
-    now = datetime.now(tz)
-    now = now - timedelta(hours=2)
+    now = datetime.now()  # Use naive datetime
     duration = timedelta(hours=1)
     text = text.lower()
 
@@ -328,7 +323,6 @@ def parse_event_time(text):
         start_time = now + timedelta(hours=1)
         start_time = datetime(start_time.year, start_time.month, start_time.day, start_time.hour, start_time.minute)
         end_time = start_time + duration
-        print("DEBUG: parse_event_time returning start_time:", start_time, "end_time:", end_time)
         return start_time, end_time
 
     start_time = datetime(
@@ -341,7 +335,6 @@ def parse_event_time(text):
         0
     )
     end_time = start_time + duration
-    print("DEBUG: parse_event_time returning start_time:", start_time, "end_time:", end_time)
     return start_time, end_time
 
 def create_calendar_event(summary, start_time=None, end_time=None, description=""):
@@ -356,31 +349,23 @@ def create_calendar_event(summary, start_time=None, end_time=None, description="
         )
         service = build('calendar', 'v3', credentials=creds)
         if not start_time:
-            tz = pytz_timezone("UTC")
-            now = datetime.now(tz)
-            now = now - timedelta(hours=2)
+            now = datetime.now()  # Use naive datetime
             start_time = now + timedelta(hours=1)
             end_time = start_time + timedelta(hours=1)
         if start_time and not end_time:
             end_time = start_time + timedelta(hours=1)
 
-        # FINAL FIX: REMOVE tzinfo! Always pass naive datetime with "timeZone"
-        if start_time.tzinfo is not None:
-            start_time = start_time.replace(tzinfo=None)
-        if end_time.tzinfo is not None:
-            end_time = end_time.replace(tzinfo=None)
-
-        print("DEBUG: Creating event with dateTime:", start_time.isoformat(), "timeZone=UTC")
+        # Create event with naive datetime and let Google handle timezone
         event = {
             'summary': summary,
             'description': description,
             'start': {
                 'dateTime': start_time.isoformat(),
-                'timeZone': 'UTC',
+                'timeZone': 'Europe/Rome',  # Let Google Calendar handle the conversion
             },
             'end': {
                 'dateTime': end_time.isoformat(),
-                'timeZone': 'UTC',
+                'timeZone': 'Europe/Rome',  # Let Google Calendar handle the conversion
             },
         }
         calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
@@ -396,9 +381,8 @@ upcoming_reminder_thread.start()
 
 @app.route("/test-time", methods=["GET"])
 def test_time():
-    tz = pytz_timezone("UTC")
+    tz = pytz_timezone("Europe/Rome")
     now = datetime.now(tz)
-    now = now - timedelta(hours=2)
     return jsonify({
         "current_time": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
         "timezone": str(tz),
