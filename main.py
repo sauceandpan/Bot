@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import threading
 import time
 import re
-from pytz import timezone as pytz_timezone
+from pytz import timezone
 
 # Try to load environment variables from .env file if it exists
 try:
@@ -21,7 +21,7 @@ except ImportError:
     print("python-dotenv not installed, using system environment variables")
 
 # Set Rome timezone
-ROME_TZ = pytz_timezone("Europe/Rome")
+ROME_TZ = timezone('Europe/Rome')
 
 wa_token=os.environ.get("WA_TOKEN")
 genai.configure(api_key=os.environ.get("GEN_API"))
@@ -122,14 +122,14 @@ def get_calendar_events(days=7, time_description="upcoming", strict_time_filter=
             scopes=['https://www.googleapis.com/auth/calendar.readonly']
         )
         
-        # Build the service with the prompots
+        # Build the service with the prompts
         service = build('calendar', 'v3', credentials=creds)
         
         # Calculate time range based on time description
         now = datetime.now(ROME_TZ)
         
         if time_description == "today":
-            # Start from today at midnights
+            # Start from today at midnight
             start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
             end_date = start_date + timedelta(days=1)
         elif time_description == "tomorrow":
@@ -158,11 +158,11 @@ def get_calendar_events(days=7, time_description="upcoming", strict_time_filter=
             start_date = now
             end_date = now + timedelta(days=days)
         
-        time_min = start_date.isoformat() + 'Z'
-        time_max = end_date.isoformat() + 'Z'
+        time_min = start_date.isoformat()
+        time_max = end_date.isoformat()
         
         calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
-  
+        
         events_result = service.events().list(
             calendarId=calendar_id,
             timeMin=time_min,
@@ -176,8 +176,8 @@ def get_calendar_events(days=7, time_description="upcoming", strict_time_filter=
         
         if not events:
             return f"No events found for {time_description}."
-            
-        # ARRYA the eventss
+        
+        # Format the events
         formatted_events = []
         
         # For strict time filtering, we'll filter based on the requested timeframe
@@ -205,7 +205,6 @@ def get_calendar_events(days=7, time_description="upcoming", strict_time_filter=
     except Exception as e:
         return f"Error fetching calendar events: {str(e)}"
 
-# Function to send daily calendar updates
 def daily_calendar_reminder():
     # Initial delay to let server start up
     time.sleep(5)
@@ -245,7 +244,6 @@ def daily_calendar_reminder():
             traceback.print_exc()
             time.sleep(600)  # Wait longer on error
 
-# Function to check for upcoming events and send reminders 30 minutes before
 def upcoming_event_reminder():
     # Initial delay to let server start up
     time.sleep(10)
@@ -318,9 +316,6 @@ def upcoming_event_reminder():
                     start = evt['start'].get('dateTime', evt['start'].get('date'))
                     summary = evt.get('summary', 'Untitled Event')
                     print(f"- {summary} at {start}")
-                
-            # Current time plus 30 minutes
-            reminder_window_end = now + timedelta(minutes=30)
             
             for event in events:
                 event_id = event['id']
@@ -423,10 +418,8 @@ def create_calendar_event(summary, start_time=None, end_time=None, description="
                 'timeZone': 'Europe/Rome',
             },
         }
-        
         calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
         event = service.events().insert(calendarId=calendar_id, body=event).execute()
-        
         return f"✅ Event created: {summary} on {start_time.strftime('%a, %b %d at %I:%M %p')}"
     except Exception as e:
         return f"Error creating calendar event: {str(e)}"
