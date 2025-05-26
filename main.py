@@ -114,7 +114,7 @@ def get_calendar_events(days=7, time_description="upcoming", strict_time_filter=
         service = build('calendar', 'v3', credentials=creds)
         tz = pytz_timezone("UTC")
         now = datetime.now(tz)
-        now = now - timedelta(hours=3)
+        now = now - timedelta(hours=2)
         if time_description == "today":
             start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
             end_date = start_date + timedelta(days=1)
@@ -216,7 +216,7 @@ def upcoming_event_reminder():
                 continue
             print("Checking for upcoming events...")
             now = datetime.now(tz)
-            now = now - timedelta(hours=3)
+            now = now - timedelta(hours=2)
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             today_end = today_start + timedelta(days=1)
             time_min = today_start.isoformat()
@@ -267,7 +267,7 @@ def upcoming_event_reminder():
                         event_start_time = datetime.fromisoformat(start.replace('Z', '+00:00')) \
                             if 'Z' in start else datetime.fromisoformat(start)
                         now_now = datetime.now(tz)
-                        now_now = now_now - timedelta(hours=3)
+                        now_now = now_now - timedelta(hours=2)
                         start_str = event_start_time.strftime("%I:%M %p")
                         time_until = (event_start_time - now_now)
                         minutes_until = int(time_until.total_seconds() / 60)
@@ -301,7 +301,7 @@ def parse_event_time(text):
     # Build a naive datetime (no tzinfo)
     tz = pytz_timezone("UTC")
     now = datetime.now(tz)
-    now = now - timedelta(hours=3)
+    now = now - timedelta(hours=2)
     duration = timedelta(hours=1)
     text = text.lower()
 
@@ -358,7 +358,7 @@ def create_calendar_event(summary, start_time=None, end_time=None, description="
         if not start_time:
             tz = pytz_timezone("UTC")
             now = datetime.now(tz)
-            now = now - timedelta(hours=3)
+            now = now - timedelta(hours=2)
             start_time = now + timedelta(hours=1)
             end_time = start_time + timedelta(hours=1)
         if start_time and not end_time:
@@ -398,7 +398,7 @@ upcoming_reminder_thread.start()
 def test_time():
     tz = pytz_timezone("UTC")
     now = datetime.now(tz)
-    now = now - timedelta(hours=3)
+    now = now - timedelta(hours=2)
     return jsonify({
         "current_time": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
         "timezone": str(tz),
