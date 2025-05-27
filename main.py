@@ -255,6 +255,16 @@ def daily_calendar_reminder():
 
 # Add at the top with other global variables
 pending_confirmations = {}  # Store events waiting for confirmation
+event_id_map = {}  # Map 3-digit IDs to actual event IDs
+next_event_code = 100  # Start from 100 for 3-digit codes
+
+def get_next_event_code():
+    global next_event_code
+    code = next_event_code
+    next_event_code = (next_event_code + 1) % 1000  # Cycle through 100-999
+    if next_event_code < 100:
+        next_event_code = 100
+    return code
 
 def delete_calendar_event(event_id):
     try:
@@ -371,8 +381,12 @@ def upcoming_event_reminder():
                         minutes_until = int(time_until)
                         
                         if 0 < minutes_until <= 35:
-                            reminder_message = f"⏰ *UPCOMING EVENT REMINDER* ⏰\n\n• {summary} starts in {minutes_until} minutes (at {start_str})\n\nReply with 'confirm' to attend or ignore to reschedule for tomorrow."
-                            print(f"Sending reminder for event: {summary}")
+                            # Generate a 3-digit code for this event
+                            event_code = get_next_event_code()
+                            event_id_map[event_code] = event_id
+                            
+                            reminder_message = f"⏰ *UPCOMING EVENT REMINDER* ⏰\n\n• [{event_code}] {summary} starts in {minutes_until} minutes (at {start_str})\n\nReply with '{event_code} confirm' to attend or ignore to reschedule for tomorrow."
+                            print(f"Sending reminder for event: {summary} with code {event_code}")
                             send(reminder_message)
                             
                             # Store event info for confirmation
@@ -380,7 +394,8 @@ def upcoming_event_reminder():
                                 'summary': summary,
                                 'start_time': event_start_time,
                                 'end_time': event_start_time + timedelta(hours=1),
-                                'reminder_sent_at': datetime.now(ROME_TZ)
+                                'reminder_sent_at': datetime.now(ROME_TZ),
+                                'event_code': event_code
                             }
                             
                             reminded_events.add(event_id)
@@ -389,6 +404,7 @@ def upcoming_event_reminder():
             
             if len(reminded_events) > 100:
                 reminded_events.clear()
+                event_id_map.clear()  # Clear the mapping when we clear reminded events
             
             time.sleep(60)
         except Exception as e:
@@ -567,22 +583,34 @@ def webhook():
                 print(f"Received text message: {prompt}")
                 prompt_lower = prompt.lower()
                 
-                # Add confirmation handling
-                if prompt_lower == "confirm":
-                    current_time = datetime.now(ROME_TZ)
-                    for event_id, event_data in list(pending_confirmations.items()):
-                        time_since_reminder = (current_time - event_data['reminder_sent_at']).total_seconds() / 60
-                        if time_since_reminder <= 35:
-                            response = delete_calendar_event(event_id)
-                            send(response)
-                            del pending_confirmations[event_id]
-                            break
+                # Add confirmation handling with event codes
+                if "confirm" in prompt_lower:
+                    # Try to extract event code
+                    code_match = re.search(r'(\d{3})\s*confirm', prompt)
+                    if code_match:
+                        event_code = int(code_match.group(1))
+                        if event_code in event_id_map:
+                            event_id = event_id_map[event_code]
+                            current_time = datetime.now(ROME_TZ)
+                            if event_id in pending_confirmations:
+                                event_data = pending_confirmations[event_id]
+                                time_since_reminder = (current_time - event_data['reminder_sent_at']).total_seconds() / 60
+                                if time_since_reminder <= 35:
+                                    response = delete_calendar_event(event_id)
+                                    send(response)
+                                    del pending_confirmations[event_id]
+                                    del event_id_map[event_code]
+                                else:
+                                    response = reschedule_event(event_id, event_data)
+                                    send(f"⏰ *EVENT RESCHEDULED* ⏰\n\n{response}")
+                                    del pending_confirmations[event_id]
+                                    del event_id_map[event_code]
+                            else:
+                                send("This event is no longer pending confirmation.")
                         else:
-                            response = reschedule_event(event_id, event_data)
-                            send(f"⏰ *EVENT RESCHEDULED* ⏰\n\n{response}")
-                            del pending_confirmations[event_id]
+                            send("Invalid event code. Please check the code and try again.")
                     else:
-                        send("No pending events to confirm.")
+                        send("Please specify the event code (e.g., '123 confirm')")
                     return jsonify({"status": "ok"}), 200
                 
                 # Check for calendar event creation keywords
