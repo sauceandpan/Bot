@@ -253,6 +253,63 @@ def daily_calendar_reminder():
             traceback.print_exc()
             time.sleep(600)  # Wait longer on error
 
+# Add at the top with other global variables
+pending_confirmations = {}  # Store events waiting for confirmation
+
+def delete_calendar_event(event_id):
+    try:
+        if not has_calendar_creds:
+            return "⚠️ Cannot delete event: Google Calendar credentials not configured"
+        
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+        creds_dict = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=['https://www.googleapis.com/auth/calendar']
+        )
+        
+        service = build('calendar', 'v3', credentials=creds)
+        calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
+        
+        service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+        return "✅ Event deleted successfully"
+    except Exception as e:
+        return f"Error deleting event: {str(e)}"
+
+def reschedule_event(event_id, event_data):
+    try:
+        if not has_calendar_creds:
+            return "⚠️ Cannot reschedule event: Google Calendar credentials not configured"
+        
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+        creds_dict = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=['https://www.googleapis.com/auth/calendar']
+        )
+        
+        service = build('calendar', 'v3', credentials=creds)
+        calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
+        
+        # Get the original event
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        
+        # Add one day to start and end times
+        start_time = datetime.fromisoformat(event['start']['dateTime'].replace('Z', '+00:00'))
+        end_time = datetime.fromisoformat(event['end']['dateTime'].replace('Z', '+00:00'))
+        
+        start_time = start_time + timedelta(days=1)
+        end_time = end_time + timedelta(days=1)
+        
+        # Update the event
+        event['start']['dateTime'] = start_time.isoformat()
+        event['end']['dateTime'] = end_time.isoformat()
+        
+        service.events().update(calendarId=calendar_id, eventId=event_id, body=event).execute()
+        return f"✅ Event rescheduled to {start_time.strftime('%a, %b %d at %I:%M %p')}"
+    except Exception as e:
+        return f"Error rescheduling event: {str(e)}"
+
 def upcoming_event_reminder():
     # Initial delay to let server start up
     time.sleep(10)
@@ -260,40 +317,20 @@ def upcoming_event_reminder():
     print("Starting upcoming event reminder service...")
     reminded_events = set()  # To track events we've already reminded about
     
-    # Print all events for today once at startup
-    try:
-        if has_calendar_creds:
-            print("\n--- Today's Events ---")
-            today_events = get_calendar_events(1, "today", strict_time_filter=True)
-            print(today_events)
-            print("---------------------\n")
-    except Exception as e:
-        print(f"Error checking today's events: {str(e)}")
-    
     while True:
         try:
             if not has_calendar_creds:
-                # Skip if calendar credentials are not available
-                print("Skipping upcoming event check - no calendar credentials")
                 time.sleep(60)
                 continue
                 
             print("Checking for upcoming events...")
-            # Get current time in Rome timezone
             now = datetime.now(ROME_TZ)
-            
-            # Get today's date at midnight
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            # End of today
             today_end = today_start + timedelta(days=1)
             
-            # Format times for Google Calendar API
             time_min = today_start.isoformat()
             time_max = today_end.isoformat()
             
-            print(f"Checking for all of today's events from {today_start} to {today_end}")
-            
-            # Load credentials from environment variable
             creds_json = os.environ.get("GOOGLE_CREDENTIALS")
             creds_dict = json.loads(creds_json)
             creds = service_account.Credentials.from_service_account_info(
@@ -301,11 +338,9 @@ def upcoming_event_reminder():
                 scopes=['https://www.googleapis.com/auth/calendar.readonly']
             )
             
-            # Build the service
             service = build('calendar', 'v3', credentials=creds)
             calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
             
-            # Query for all of today's events
             events_result = service.events().list(
                 calendarId=calendar_id,
                 timeMin=time_min,
@@ -317,70 +352,48 @@ def upcoming_event_reminder():
             
             events = events_result.get('items', [])
             
-            if not events:
-                print("No events found for today")
-            else:
-                print(f"Found {len(events)} events for today")
-                for evt in events:
-                    start = evt['start'].get('dateTime', evt['start'].get('date'))
-                    summary = evt.get('summary', 'Untitled Event')
-                    print(f"- {summary} at {start}")
-            
             for event in events:
                 event_id = event['id']
                 
-                # Skip if we've already reminded about this event
                 if event_id in reminded_events:
-                    print(f"Already sent reminder for event ID: {event_id}")
                     continue
                     
                 start = event['start'].get('dateTime', event['start'].get('date'))
                 summary = event.get('summary', 'Untitled Event')
                 
-                print(f"Processing event: {summary}, starts at {start}")
-                
                 if 'T' in start:  # It's a datetime
                     try:
-                        # Parse the datetime string and convert to Rome timezone
                         event_start_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
                         event_start_time = event_start_time.astimezone(ROME_TZ)
                         start_str = event_start_time.strftime("%I:%M %p")
                         
-                        # Calculate time until event (both times are now timezone-aware)
                         time_until = (event_start_time - now).total_seconds() / 60
                         minutes_until = int(time_until)
                         
-                        print(f"Event starts in {minutes_until} minutes")
-                        
-                        # Send reminder if event is within 35 minutes
                         if 0 < minutes_until <= 35:
-                            reminder_message = f"⏰ *UPCOMING EVENT REMINDER* ⏰\n\n• {summary} starts in {minutes_until} minutes (at {start_str})"
+                            reminder_message = f"⏰ *UPCOMING EVENT REMINDER* ⏰\n\n• {summary} starts in {minutes_until} minutes (at {start_str})\n\nReply with 'confirm' to attend or ignore to reschedule for tomorrow."
                             print(f"Sending reminder for event: {summary}")
                             send(reminder_message)
                             
-                            # Mark as reminded
+                            # Store event info for confirmation
+                            pending_confirmations[event_id] = {
+                                'summary': summary,
+                                'start_time': event_start_time,
+                                'end_time': event_start_time + timedelta(hours=1),
+                                'reminder_sent_at': datetime.now(ROME_TZ)
+                            }
+                            
                             reminded_events.add(event_id)
-                            print(f"Marked event {event_id} as reminded")
-                        else:
-                            print(f"Event {summary} is {minutes_until} minutes away, outside reminder window")
                     except Exception as e:
                         print(f"Error processing event time: {str(e)}")
-                else:
-                    print(f"Skipping all-day event: {summary}")
-                    
-            # Clean up reminded_events set occasionally to prevent memory growth
+            
             if len(reminded_events) > 100:
-                print("Clearing reminder history (exceeded 100 events)")
                 reminded_events.clear()
             
-            # Check every minute
-            print("Sleeping for 60 seconds before next check...")
             time.sleep(60)
         except Exception as e:
             print(f"Error in upcoming event reminder: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            time.sleep(120)  # Wait longer on error
+            time.sleep(120)
 
 def create_calendar_event(summary, start_time=None, end_time=None, description=""):
     try:
@@ -560,6 +573,24 @@ def webhook():
                 prompt = message["text"]["body"]
                 print(f"Received text message: {prompt}")
                 prompt_lower = prompt.lower()
+                
+                # Add confirmation handling
+                if prompt_lower == "confirm":
+                    current_time = datetime.now(ROME_TZ)
+                    for event_id, event_data in list(pending_confirmations.items()):
+                        time_since_reminder = (current_time - event_data['reminder_sent_at']).total_seconds() / 60
+                        if time_since_reminder <= 35:
+                            response = delete_calendar_event(event_id)
+                            send(response)
+                            del pending_confirmations[event_id]
+                            break
+                        else:
+                            response = reschedule_event(event_id, event_data)
+                            send(f"⏰ *EVENT RESCHEDULED* ⏰\n\n{response}")
+                            del pending_confirmations[event_id]
+                    else:
+                        send("No pending events to confirm.")
+                    return jsonify({"status": "ok"}), 200
                 
                 # Check for calendar event creation keywords
                 if any(phrase in prompt_lower for phrase in ["create event", "add event", "schedule event", "add reminder", "set reminder", "remind me"]):
