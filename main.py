@@ -663,6 +663,19 @@ def webhook():
         print("=== End of Webhook Request ===\n")
         return jsonify({"status": "ok"}), 200
 
+def start_reminder_threads():
+    if has_calendar_creds:
+        print("Starting reminder threads...")
+        reminder_thread = threading.Thread(target=daily_calendar_reminder, daemon=True)
+        upcoming_reminder_thread = threading.Thread(target=upcoming_event_reminder, daemon=True)
+        
+        reminder_thread.start()
+        upcoming_reminder_thread.start()
+        print("Reminder threads started successfully!")
+
+# Start reminder threads immediately
+start_reminder_threads()
+
 if __name__ == "__main__":
     # Verify environment variables before starting
     print("\n--- Environment Check ---")
@@ -672,16 +685,6 @@ if __name__ == "__main__":
     print(f"Gemini API: {'✓ Available' if os.environ.get('GEN_API') else '✗ Missing'}")
     print(f"Google Calendar Credentials: {'✓ Available' if has_calendar_creds else '✗ Missing'}")
     print("------------------------\n")
-    
-    # Start reminder threads if calendar credentials are available
-    if has_calendar_creds:
-        print("Starting reminder threads...")
-        reminder_thread = threading.Thread(target=daily_calendar_reminder, daemon=True)
-        upcoming_reminder_thread = threading.Thread(target=upcoming_event_reminder, daemon=True)
-        
-        reminder_thread.start()
-        upcoming_reminder_thread.start()
-        print("Reminder threads started successfully!")
     
     # Test WhatsApp connectivity
     if wa_token and phone_id and phone:
