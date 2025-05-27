@@ -83,19 +83,28 @@ def send(answer):
           }
     
     try:
-        print(f"Attempting to send WhatsApp message to {phone}: {answer[:50]}...")
+        print(f"Attempting to send WhatsApp message to {phone}")
+        print(f"Message content: {answer[:100]}...")  # Print first 100 chars of message
+        print(f"Using URL: {url}")
+        print(f"Headers: {headers}")
+        
         response=requests.post(url, headers=headers, json=data)
         response_json = response.json()
         
+        print(f"Response status code: {response.status_code}")
+        print(f"Response body: {response_json}")
+        
         if response.status_code == 200:
-            print(f"Message sent successfully. Status: {response.status_code}")
+            print("Message sent successfully!")
             return response
         else:
             print(f"Failed to send message. Status: {response.status_code}")
-            print(f"Response: {response_json}")
+            print(f"Error response: {response_json}")
             return response
     except Exception as e:
         print(f"Error sending WhatsApp message: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def remove(*file_paths):
@@ -504,25 +513,57 @@ reminder_thread.start()
 upcoming_reminder_thread = threading.Thread(target=upcoming_event_reminder, daemon=True)
 upcoming_reminder_thread.start()
 
-@app.route("/webhook", methods=["GET", "POST"]) # webhook routings
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+    print("\n=== New Webhook Request ===")
+    print(f"Request Method: {request.method}")
+    print(f"Request Headers: {dict(request.headers)}")
+    
     if request.method == "GET":
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
+        print(f"GET Request Details - Mode: {mode}, Token: {token}, Challenge: {challenge}")
         if mode == "subscribe" and token == "BOT":
+            print("Webhook verification successful")
             return challenge, 200
         else:
+            print("Webhook verification failed")
             return "Failed", 403
+            
     elif request.method == "POST":
         try:
-            data = request.get_json()["entry"][0]["changes"][0]["value"]["messages"][0]
-            if data["type"] == "text":
-                prompt = data["text"]["body"]
+            print("Processing POST request")
+            raw_data = request.get_data()
+            print(f"Raw request data: {raw_data}")
+            
+            data = request.get_json()
+            print(f"Parsed JSON data: {data}")
+            
+            if not data:
+                print("No data received in webhook")
+                return jsonify({"status": "error", "message": "No data received"}), 400
+                
+            if "entry" not in data:
+                print("No 'entry' in webhook data")
+                return jsonify({"status": "error", "message": "Invalid webhook format"}), 400
+                
+            messages = data["entry"][0]["changes"][0]["value"].get("messages", [])
+            if not messages:
+                print("No messages in webhook data")
+                return jsonify({"status": "ok"}), 200
+                
+            message = messages[0]
+            print(f"Processing message: {message}")
+            
+            if message["type"] == "text":
+                prompt = message["text"]["body"]
+                print(f"Received text message: {prompt}")
                 prompt_lower = prompt.lower()
                 
                 # Check for calendar event creation keywords
                 if any(phrase in prompt_lower for phrase in ["create event", "add event", "schedule event", "add reminder", "set reminder", "remind me"]):
+                    print("Processing calendar event creation request")
                     # Extract event details
                     event_match = re.search(r'(?:create|add|schedule|set|remind me about)\s+(?:an? )?(?:event|reminder|meeting)?\s*(?:for|about|to)?\s*["\']?([^"\']+)["\']?', prompt_lower)
                     
@@ -546,6 +587,7 @@ def webhook():
                 
                 # Check if the user is asking for calendar information
                 elif any(keyword in prompt_lower for keyword in ["calendar", "schedule", "events", "appointments", "meetings", "agenda"]):
+                    print("Processing calendar information request")
                     # Default to 7 days
                     days = 7
                     time_description = "upcoming week"
@@ -580,44 +622,21 @@ def webhook():
                     calendar_response = get_calendar_events(days, time_description)
                     send(calendar_response)
                 else:
+                    print("Processing general message with Gemini")
                     convo.send_message(prompt)
-                    send(convo.last.text)
+                    response = convo.last.text
+                    print(f"Gemini response: {response}")
+                    send(response)
             else:
-                media_url_endpoint = f'https://graph.facebook.com/v18.0/{data[data["type"]]["id"]}/'
-                headers = {'Authorization': f'Bearer {wa_token}'}
-                media_response = requests.get(media_url_endpoint, headers=headers)
-                media_url = media_response.json()["url"]
-                media_download_response = requests.get(media_url, headers=headers)
-                if data["type"] == "audio":
-                    filename = "/tmp/temp_audio.mp3"
-                elif data["type"] == "image":
-                    filename = "/tmp/temp_image.jpg"
-                elif data["type"] == "document":
-                    doc=fitz.open(stream=media_download_response.content,filetype="pdf")
-                    for _,page in enumerate(doc):
-                        destination="/tmp/temp_image.jpg"
-                        pix = page.get_pixmap()
-                        pix.save(destination)
-                        file = genai.upload_file(path=destination,display_name="tempfile")
-                        response = model.generate_content(["What is this",file])
-                        answer=response._result.candidates[0].content.parts[0].text
-                        convo.send_message(f"This message is created by an llm model based on the image prompt of user, reply to the user based on this: {answer}")
-                        send(convo.last.text)
-                        remove(destination)
-                else:send("This format is not Supported by the bot ☹")
-                with open(filename, "wb") as temp_media:
-                    temp_media.write(media_download_response.content)
-                file = genai.upload_file(path=filename,display_name="tempfile")
-                response = model.generate_content(["What is this",file])
-                answer=response._result.candidates[0].content.parts[0].text
-                remove("/tmp/temp_image.jpg","/tmp/temp_audio.mp3")
-                convo.send_message(f"This is an voice/image message from user transcribed by an llm model, reply to the user based on the transcription: {answer}")
-                send(convo.last.text)
-                files=genai.list_files()
-                for file in files:
-                    file.delete()
+                print(f"Unsupported message type: {message['type']}")
+                send("This format is not Supported by the bot ☹")
+                
         except Exception as e:
-            print(f"Error in webhook: {e}")
+            print(f"Error in webhook: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+        print("=== End of Webhook Request ===\n")
         return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
@@ -639,4 +658,5 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Failed to send WhatsApp test message: {str(e)}")
     
-    app.run(debug=True, port=8000)
+    print("Starting Flask server on all interfaces (0.0.0.0:8000)")
+    app.run(host='0.0.0.0', port=8000, debug=True)
